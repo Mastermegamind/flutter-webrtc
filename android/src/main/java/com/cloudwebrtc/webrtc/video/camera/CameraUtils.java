@@ -481,11 +481,26 @@ public class CameraUtils {
         final Rect rect = cameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE);
         final double maxZoomLevel = cameraCharacteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
 
-        final double desiredZoomLevel = Math.max(1.0, Math.min(zoomLevel, maxZoomLevel));
+        // Android 11+: zoom with CONTROL_ZOOM_RATIO when the camera reports a
+        // range. On a logical multi-camera (e.g. a phone's back camera made of
+        // ultra-wide, wide and telephoto lenses) this lets the HAL switch to
+        // the physical lens for the ratio — 0.6x ultra-wide, 3x/10x telephoto —
+        // where a SCALER_CROP_REGION crop only enlarges the main lens and can't
+        // go below 1x.
+        Range<Float> zoomRatioRange = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+          zoomRatioRange = cameraCharacteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+        }
+
+        final double desiredZoomLevel = zoomRatioRange != null
+                ? Math.max(zoomRatioRange.getLower(), Math.min(zoomLevel, zoomRatioRange.getUpper()))
+                : Math.max(1.0, Math.min(zoomLevel, maxZoomLevel));
 
         float ratio = 1.0f / (float)desiredZoomLevel;
 
-        if (rect != null) {
+        if (zoomRatioRange != null) {
+          captureRequestBuilder.set(CaptureRequest.CONTROL_ZOOM_RATIO, (float) desiredZoomLevel);
+        } else if (rect != null) {
           int croppedWidth = rect.width() - Math.round((float) rect.width() * ratio);
           int croppedHeight = rect.height() - Math.round((float) rect.height() * ratio);
           final Rect desiredRegion = new Rect(croppedWidth / 2, croppedHeight / 2, rect.width() - croppedWidth / 2, rect.height() - croppedHeight / 2);
