@@ -1,0 +1,59 @@
+# Keeps the lens-switching zoom patch on every new upstream release.
+#
+# For each upstream release tag (vX.Y.Z...) that has no cbt/<tag> branch yet,
+# this creates cbt/<tag> from the tag and re-applies the patch commit (found
+# by its subject on the newest cbt/* branch). If the patch no longer applies,
+# it opens an issue instead so a person can resolve it.
+#
+# Apps depend on a branch, e.g. in pubspec.yaml:
+#   dependency_overrides:
+#     flutter_webrtc:
+#       git:
+#         url: https://github.com/Mastermegamind/flutter-webrtc.git
+#         ref: cbt/v1.6.2+hotfix.3
+name: cbt lens patch
+
+on:
+  schedule:
+    - cron: "17 3 * * 1" # Mondays 03:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  rebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Re-apply the patch on new upstream releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name "cbt-lens-patch bot"
+          git config user.email "actions@users.noreply.github.com"
+          git remote add upstream https://github.com/flutter-webrtc/flutter-webrtc.git
+          git fetch --quiet upstream --tags
+          git fetch --quiet origin 'refs/heads/cbt/*:refs/remotes/origin/cbt/*'
+          subject="android: setZoom uses CONTROL_ZOOM_RATIO on Android 11+ (switches physical lenses)"
+          latest=$(git for-each-ref --sort=-committerdate --format='%(refname:short)' refs/remotes/origin/cbt/ | head -1)
+          patch=$(git log --format=%H --grep="$subject" --fixed-strings -1 "$latest")
+          [ -n "$patch" ] || { echo "patch commit not found on $latest"; exit 1; }
+          # Newest 5 release tags (v-prefixed), oldest first.
+          for tag in $(git tag -l 'v*' --sort=-v:refname | head -5 | tac); do
+            branch="cbt/$tag"
+            if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then continue; fi
+            git checkout --quiet -B "$branch" "refs/tags/$tag"
+            if git cherry-pick "$patch"; then
+              git push --quiet origin "$branch"
+              echo "created $branch"
+            else
+              git cherry-pick --abort || true
+              gh issue create --title "Lens patch does not apply to $tag" \
+                --body "The CONTROL_ZOOM_RATIO patch ($patch) conflicts with upstream $tag. Re-apply it by hand on a cbt/$tag branch." || true
+            fi
+          done

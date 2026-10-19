@@ -167,3 +167,25 @@ Support this project with your organization. Your logo will show up here with a 
 <a href="https://opencollective.com/flutter-webrtc/organization/7/website"><img src="https://opencollective.com/flutter-webrtc/organization/7/avatar.svg"></a>
 <a href="https://opencollective.com/flutter-webrtc/organization/8/website"><img src="https://opencollective.com/flutter-webrtc/organization/8/avatar.svg"></a>
 <a href="https://opencollective.com/flutter-webrtc/organization/9/website"><img src="https://opencollective.com/flutter-webrtc/organization/9/avatar.svg"></a>
+
+## This fork: lens-switching zoom (cbt/* branches)
+
+Branches named `cbt/<upstream tag>` are the upstream release plus one Android
+patch: `setZoom` uses `CONTROL_ZOOM_RATIO` on Android 11+ instead of a crop.
+On phones whose back camera is several lenses behind one camera id (ultra-wide,
+wide, telephoto), this lets the zoom level pick the physical lens: 0.6x
+ultra-wide, 3x or 10x telephoto. Devices without a zoom-ratio range keep the
+original crop behaviour.
+
+Use it from an app with a dependency override:
+
+```yaml
+dependency_overrides:
+  flutter_webrtc:
+    git:
+      url: https://github.com/Mastermegamind/flutter-webrtc.git
+      ref: cbt/v1.6.2+hotfix.3
+```
+
+The `cbt lens patch` workflow re-applies the patch to each new upstream
+release every week, and opens an issue if it no longer applies.
